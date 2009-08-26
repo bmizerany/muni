@@ -1,0 +1,40 @@
+#!/usr/bin/ruby
+
+require 'rubygems'
+require 'yaml'
+require 'hpricot'
+require 'open-uri'
+
+module Muni
+
+  ROUTE_FILE = File.expand_path("~/.muni")
+
+  def self.parse!(from, minutes=5)
+    abort("route file missing at #{ROUTE_FILE}") if !File.exists?(ROUTE_FILE)
+    routes = YAML.load_file(ROUTE_FILE)
+    url = routes[from]
+    abort("route '#{from}' is unknown") if url.nil?
+    doc = Hpricot(open(url).read)
+    next3 = (doc / "//td[@valign='baseline']/div[@align='right']/span")
+    leave = Time.now + (minutes.to_i * 60)
+    times = next3.map {|e| e.inner_html.tr('&nbsp;', '').to_i * 60}
+    diff = leave - Time.now
+    fork {
+      while true
+        if (diff < times.first + 60 * 5)
+          g("run! - #{((diff - times.first)/60).floor}")
+          break
+        elsif (d = (diff - times.first)) <= 10 * 60
+          g("#{from} bus here in #{(d/60).floor} minutes!")
+          break
+        end
+        sleep(5)
+      end
+    }
+  end
+
+  def self.g(m) ; system("growlnotify -m '#{m}'") ; end
+
+end
+
+Muni.parse!(*ARGV)
